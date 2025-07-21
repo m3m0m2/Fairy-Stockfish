@@ -33,6 +33,7 @@
 #include "uci.h"
 #include "xboard.h"
 #include "syzygy/tbprobe.h"
+#include "uciext.h"
 
 using namespace std;
 
@@ -298,6 +299,7 @@ void UCI::loop(int argc, char* argv[]) {
   Position pos;
   string token, cmd;
   StateListPtr states(new std::deque<StateInfo>(1));
+  std::vector<Move> moveStack;
 
   assert(variants.find(Options["UCI_Variant"])->second != nullptr);
   pos.set(variants.find(Options["UCI_Variant"])->second, variants.find(Options["UCI_Variant"])->second->startFen, false, &states->back(), Threads.main());
@@ -412,6 +414,42 @@ void UCI::loop(int argc, char* argv[]) {
 #endif
           is.seekg(0);
           position(pos, is, states);
+      }
+      // Not UCI commands, but useful to have from UCIExt
+      else if (token == "cm") // Show candidate moves
+      {
+        sync_cout << "cm:" << UCIExt::candidateMoves(pos, Stockfish::NOTATION_SAN) << sync_endl;
+      }
+      else if (token == "moves") // Takes list of SAN moves
+      {
+        while (is >> token)
+        {
+            Move move = UCIExt::parseMove(pos, token);
+            if (move == MOVE_NONE) {
+                sync_cout << "Invalid move: " << token << sync_endl;
+                break;
+            }
+            states->emplace_back();
+            pos.do_move(move, states->back());
+            moveStack.push_back(move);
+        }
+      }
+      else if (token == "back")  // Retract last move. Warn: only works after "moves" cmd
+      {
+        if (moveStack.size() == 0) continue;
+
+        pos.undo_move(moveStack.back());
+        states->pop_back();
+        moveStack.pop_back();
+      }
+      else if (token == "reset") // Go to starting the position. Warn: only works after "moves" cmd
+      {
+        while (moveStack.size() > 0)
+        {
+            pos.undo_move(moveStack.back());
+            states->pop_back();
+            moveStack.pop_back();
+        }
       }
       else if (!token.empty() && token[0] != '#')
           sync_cout << "Unknown command: " << cmd << sync_endl;
