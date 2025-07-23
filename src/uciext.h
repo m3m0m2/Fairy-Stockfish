@@ -6,7 +6,9 @@
 namespace Stockfish::UCIExt {
 
 Move parseMove(Position& pos, std::string& str);
-std::string candidateMoves(Position& pos, Stockfish::Notation notation=Stockfish::NOTATION_SAN);
+std::string candidateMoves(Position& pos, Stockfish::Notation notation=NOTATION_SAN);
+std::string variationLine(Position& pos, const std::vector<Move>& moves);
+std::vector<std::string> first2Moves(Position& pos, const std::vector<Move>& moves);
 
 } // namespace Stockfish::UCIExt
 

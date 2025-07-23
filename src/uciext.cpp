@@ -256,4 +256,55 @@ string candidateMoves(Position& pos, Stockfish::Notation notation)
     return r;
 }
 
+string variationLine(Position& pos, const std::vector<Move>& moves)
+{
+    string r;
+    StateListPtr states(new std::deque<StateInfo>(1));
+    int moveIdx = 0;
+
+    for (auto move : moves)
+    {
+        if (r.length() > 0) r += " ";
+
+        auto ply = pos.game_ply();
+        if (ply % 2 == 0 || moveIdx == 0)
+        {
+            r += std::to_string(1 + (ply / 2));
+            r += (ply % 2 == 0) ? "." : "...";
+        }
+
+        r += Stockfish::SAN::move_to_san(pos, move, NOTATION_SAN);
+        states->emplace_back();
+        pos.do_move(move, states->back());
+        moveIdx++;
+    }
+
+    for (auto it = moves.rbegin(); it != moves.rend(); it++)
+    {
+        pos.undo_move(*it);
+    }
+
+    return r;
+}
+
+vector<string> first2Moves(Position& pos, const vector<Move>& moves)
+{
+    vector<string> r;
+    if (moves.size() == 0) return r;
+
+    Move move = moves[0];
+    r.push_back(Stockfish::SAN::move_to_san(pos, move, NOTATION_SAN));
+
+    if (moves.size() == 1) return r;
+
+    StateInfo si;
+    pos.do_move(move, si);
+
+    r.push_back(Stockfish::SAN::move_to_san(pos, moves[1], NOTATION_SAN));
+
+    pos.undo_move(move);
+
+    return r;
+}
+
 } // namespace Stockfish::UCIExt

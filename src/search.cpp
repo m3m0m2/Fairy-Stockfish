@@ -34,6 +34,7 @@
 #include "timeman.h"
 #include "tt.h"
 #include "uci.h"
+#include "uciext.h"
 #include "xboard.h"
 #include "syzygy/tbprobe.h"
 
@@ -256,7 +257,7 @@ void MainThread::search() {
   bestPreviousScore = bestThread->rootMoves[0].score;
 
   // Send again PV info if we have a new best thread
-  if (bestThread != this)
+  if (bestThread != this && !Options["UCI_SAN"])
       sync_cout << UCI::pv(bestThread->rootPos, bestThread->completedDepth, -VALUE_INFINITE, VALUE_INFINITE) << sync_endl;
 
   if (CurrentProtocol == XBOARD)
@@ -300,12 +301,50 @@ void MainThread::search() {
       return;
   }
 
-  sync_cout << "bestmove " << UCI::move(rootPos, bestThread->rootMoves[0].pv[0]);
+  if (Options["UCI_SAN"])
+  {
+    size_t multiPV = std::min((size_t)Options["MultiPV"], rootMoves.size());
+    Depth depth = rootDepth;    // TODO: check, not sure
 
-  if (bestThread->rootMoves[0].pv.size() > 1 || bestThread->rootMoves[0].extract_ponder_from_tt(rootPos))
-      std::cout << " ponder " << UCI::move(rootPos, bestThread->rootMoves[0].pv[1]);
+    for (size_t i = 0; i < multiPV; ++i)
+    {
+        bool updated = rootMoves[i].score != -VALUE_INFINITE;
 
-  std::cout << sync_endl;
+        if (depth == 1 && !updated && i > 0)
+            continue;
+
+        Depth d = updated ? depth : std::max(1, depth - 1);
+        Value v = updated ? rootMoves[i].score : rootMoves[i].previousScore;
+
+        std::stringstream ss;
+        ss << "info"
+            << " depth "    << d
+            << " seldepth " << rootMoves[i].selDepth
+            << " multipv "  << i + 1
+            << " score "    << UCI::value(v)
+            << " pv " << UCIExt::variationLine(rootPos, rootMoves[i].pv);
+        sync_cout << ss.str() << sync_endl;
+    }
+
+    std::string str;
+    if (bestThread->rootMoves[0].pv.size() > 1 || bestThread->rootMoves[0].extract_ponder_from_tt(rootPos))
+    {}
+
+    std::vector<std::string> firstMoves = UCIExt::first2Moves(rootPos, bestThread->rootMoves[0].pv);
+    sync_cout << "bestmove " << firstMoves[0];
+    if (firstMoves.size() > 1)
+        std::cout << " ponder " << firstMoves[1];
+    std::cout << sync_endl;
+  }
+  else
+  {
+      sync_cout << "bestmove " << UCI::move(rootPos, bestThread->rootMoves[0].pv[0]);
+
+      if (bestThread->rootMoves[0].pv.size() > 1 || bestThread->rootMoves[0].extract_ponder_from_tt(rootPos))
+          std::cout << " ponder " << UCI::move(rootPos, bestThread->rootMoves[0].pv[1]);
+
+      std::cout << sync_endl;
+  }
 }
 
 
@@ -461,7 +500,8 @@ void Thread::search() {
               if (   mainThread
                   && multiPV == 1
                   && (bestValue <= alpha || bestValue >= beta)
-                  && Time.elapsed() > 3000)
+                  && Time.elapsed() > 3000
+                  && !Options["UCI_SAN"])
                   sync_cout << UCI::pv(rootPos, rootDepth, alpha, beta) << sync_endl;
 
               // In case of failing low/high increase aspiration window and
@@ -492,7 +532,8 @@ void Thread::search() {
           std::stable_sort(rootMoves.begin() + pvFirst, rootMoves.begin() + pvIdx + 1);
 
           if (    mainThread
-              && (Threads.stop || pvIdx + 1 == multiPV || Time.elapsed() > 3000))
+              && (Threads.stop || pvIdx + 1 == multiPV || Time.elapsed() > 3000)
+              && !Options["UCI_SAN"])
               sync_cout << UCI::pv(rootPos, rootDepth, alpha, beta) << sync_endl;
       }
 
@@ -2030,30 +2071,30 @@ string UCI::pv(const Position& pos, Depth depth, Value alpha, Value beta) {
       }
       else
       {
-      ss << "info"
-         << " depth "    << d
-         << " seldepth " << rootMoves[i].selDepth
-         << " multipv "  << i + 1
-         << " score "    << UCI::value(v);
+        ss << "info"
+           << " depth "    << d
+           << " seldepth " << rootMoves[i].selDepth
+           << " multipv "  << i + 1
+           << " score "    << UCI::value(v);
 
-      if (Options["UCI_ShowWDL"])
-          ss << UCI::wdl(v, pos.game_ply());
+        if (Options["UCI_ShowWDL"])
+            ss << UCI::wdl(v, pos.game_ply());
 
-      if (!tb && i == pvIdx)
-          ss << (v >= beta ? " lowerbound" : v <= alpha ? " upperbound" : "");
+        if (!tb && i == pvIdx)
+            ss << (v >= beta ? " lowerbound" : v <= alpha ? " upperbound" : "");
 
-      ss << " nodes "    << nodesSearched
-         << " nps "      << nodesSearched * 1000 / elapsed;
+        ss << " nodes "    << nodesSearched
+           << " nps "      << nodesSearched * 1000 / elapsed;
 
-      if (elapsed > 1000) // Earlier makes little sense
-          ss << " hashfull " << TT.hashfull();
+        if (elapsed > 1000) // Earlier makes little sense
+            ss << " hashfull " << TT.hashfull();
 
-      ss << " tbhits "   << tbHits
-         << " time "     << elapsed
-         << " pv";
+        ss << " tbhits "   << tbHits
+           << " time "     << elapsed
+           << " pv";
 
-      for (Move m : rootMoves[i].pv)
-          ss << " " << UCI::move(pos, m);
+        for (Move m : rootMoves[i].pv)
+            ss << " " << UCI::move(pos, m);
       }
   }
 
