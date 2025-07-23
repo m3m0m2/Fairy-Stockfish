@@ -22,6 +22,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <list>
 
 #include "evaluate.h"
 #include "movegen.h"
@@ -42,20 +43,60 @@ namespace Stockfish {
 extern vector<string> setup_bench(const Position&, istream&);
 
 namespace {
+    StateListPtr extStates(new std::deque<StateInfo>(1));
+    string fen;
+    bool sfen = false;
+    list<Move> moveStack;
+    list<string> sanMoves;
+
+    void updatePosition(Position& pos)
+    {
+        if (fen.length() < 2) fen = variants.find(Options["UCI_Variant"])->second->startFen;
+        extStates = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
+        pos.set(variants.find(Options["UCI_Variant"])->second, fen, Options["UCI_Chess960"], &extStates->back(), Threads.main(), sfen);
+
+        for (Move m : moveStack)
+        {
+           if (m == MOVE_NONE) break;
+
+            extStates->emplace_back();
+            pos.do_move(m, extStates->back());
+        }
+
+        for (string moveStr : sanMoves)
+        {
+            Move move = UCIExt::parseMove(pos, moveStr);
+
+            if (move == MOVE_NONE) {
+                sync_cout << "Invalid move: " << moveStr << sync_endl;
+                break;
+            }
+
+            moveStack.push_back(move);
+            extStates->emplace_back();
+            pos.do_move(move, extStates->back());
+        }
+        sanMoves.clear();
+    }
 
   // position() is called when engine receives the "position" UCI command.
   // The function sets up the position described in the given FEN string ("fen")
   // or the starting position ("startpos") and then makes the moves given in the
   // following move list ("moves").
 
-  void position(Position& pos, istringstream& is, StateListPtr& states) {
+  void position(Position& pos, istringstream& is, StateListPtr& ) {
 
     Move m;
-    string token, fen;
+    string token;
+
+    // Clear previous state
+    fen = "";
+    moveStack.clear();
+    sanMoves.clear();
 
     is >> token;
     // Parse as SFEN if specified
-    bool sfen = token == "sfen";
+    sfen = token == "sfen";
 
     if (token == "startpos")
     {
@@ -68,15 +109,13 @@ namespace {
     else
         return;
 
-    states = StateListPtr(new std::deque<StateInfo>(1)); // Drop old and create a new one
-    pos.set(variants.find(Options["UCI_Variant"])->second, fen, Options["UCI_Chess960"], &states->back(), Threads.main(), sfen);
-
     // Parse move list (if any)
     while (is >> token && (m = UCI::to_move(pos, token)) != MOVE_NONE)
     {
-        states->emplace_back();
-        pos.do_move(m, states->back());
+        moveStack.push_back(m);
     }
+
+    updatePosition(pos);
   }
 
   // trace_eval() prints the evaluation for the current position, consistent with the UCI
@@ -207,7 +246,7 @@ namespace {
                trace_eval(pos);
         }
         else if (token == "setoption")  setoption(is);
-        else if (token == "position")   position(pos, is, states);
+        else if (token == "position")   position(pos, is, extStates);
         else if (token == "ucinewgame") { Search::clear(); elapsed = now(); } // Search::clear() may take some while
     }
 
@@ -298,17 +337,15 @@ void UCI::loop(int argc, char* argv[]) {
 
   Position pos;
   string token, cmd;
-  StateListPtr states(new std::deque<StateInfo>(1));
-  std::vector<Move> moveStack;
 
   assert(variants.find(Options["UCI_Variant"])->second != nullptr);
-  pos.set(variants.find(Options["UCI_Variant"])->second, variants.find(Options["UCI_Variant"])->second->startFen, false, &states->back(), Threads.main());
+  pos.set(variants.find(Options["UCI_Variant"])->second, variants.find(Options["UCI_Variant"])->second->startFen, false, &extStates->back(), Threads.main());
 
   for (int i = 1; i < argc; ++i)
       cmd += std::string(argv[i]) + " ";
 
   // XBoard state machine
-  XBoard::stateMachine = new XBoard::StateMachine(pos, states);
+  XBoard::stateMachine = new XBoard::StateMachine(pos, extStates);
   // UCCI banmoves state
   std::vector<Move> banmoves = {};
 
@@ -363,7 +400,7 @@ void UCI::loop(int argc, char* argv[]) {
                                                            : "chess");
           Options["UCI_Variant"].set_default(defaultVariant);
           std::istringstream ss("startpos");
-          position(pos, ss, states);
+          position(pos, ss, extStates);
           if (is_uci_dialect(CurrentProtocol) && token != "ucicyclone")
               sync_cout << "id name " << engine_info(true)
                           << "\n" << Options
@@ -380,15 +417,18 @@ void UCI::loop(int argc, char* argv[]) {
       else if (token == "banmoves")
           while (is >> token)
               banmoves.push_back(UCI::to_move(pos, token));
-      else if (token == "go")         go(pos, is, states, banmoves);
-      else if (token == "position")   position(pos, is, states), banmoves.clear();
+      else if (token == "go")
+      {
+          go(pos, is, extStates, banmoves);
+      }
+      else if (token == "position")   position(pos, is, extStates), banmoves.clear();
       else if (token == "ucinewgame" || token == "usinewgame" || token == "uccinewgame") Search::clear();
       else if (token == "isready")    sync_cout << "readyok" << sync_endl;
 
       // Additional custom non-UCI commands, mainly for debugging.
       // Do not use these commands during a search!
       else if (token == "flip")     pos.flip();
-      else if (token == "bench")    bench(pos, is, states);
+      else if (token == "bench")    bench(pos, is, extStates);
       else if (token == "d")        sync_cout << pos << sync_endl;
       else if (token == "eval")     trace_eval(pos);
       else if (token == "compiler") sync_cout << compiler_info() << sync_endl;
@@ -413,43 +453,37 @@ void UCI::loop(int argc, char* argv[]) {
           }
 #endif
           is.seekg(0);
-          position(pos, is, states);
+          position(pos, is, extStates);
       }
       // Not UCI commands, but useful to have from UCIExt
       else if (token == "cm") // Show candidate moves
       {
         sync_cout << "cm:" << UCIExt::candidateMoves(pos, Stockfish::NOTATION_SAN) << sync_endl;
       }
-      else if (token == "moves") // Takes list of SAN moves
+      else if (token == "move") // Takes list of SAN moves
       {
         while (is >> token)
-        {
-            Move move = UCIExt::parseMove(pos, token);
-            if (move == MOVE_NONE) {
-                sync_cout << "Invalid move: " << token << sync_endl;
-                break;
-            }
-            states->emplace_back();
-            pos.do_move(move, states->back());
-            moveStack.push_back(move);
-        }
+            sanMoves.push_back(token);
+
+        updatePosition(pos);
       }
-      else if (token == "back")  // Retract last move. Warn: only works after "moves" cmd
+      else if (token == "back")  // Retract last move. Warn: only works after "move" cmd
       {
         if (moveStack.size() == 0) continue;
 
-        pos.undo_move(moveStack.back());
-        states->pop_back();
-        moveStack.pop_back();
-      }
-      else if (token == "reset") // Go to starting the position. Warn: only works after "moves" cmd
-      {
-        while (moveStack.size() > 0)
-        {
-            pos.undo_move(moveStack.back());
-            states->pop_back();
+        if (sanMoves.size() > 0)
+            sanMoves.pop_back();
+        else
             moveStack.pop_back();
-        }
+
+        updatePosition(pos);
+      }
+      else if (token == "reset") // Go to starting the position. Warn: only works after "move" cmd
+      {
+        moveStack.clear();
+        sanMoves.clear();
+
+        updatePosition(pos);
       }
       else if (!token.empty() && token[0] != '#')
           sync_cout << "Unknown command: " << cmd << sync_endl;
