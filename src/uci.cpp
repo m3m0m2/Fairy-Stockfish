@@ -471,17 +471,13 @@ void UCI::loop(int argc, char* argv[]) {
       {
         if (moveStack.size() == 0) continue;
 
-        if (sanMoves.size() > 0)
-            sanMoves.pop_back();
-        else
-            moveStack.pop_back();
+        moveStack.pop_back();
 
         updatePosition(pos);
       }
       else if (token == "reset") // Go to starting the position. Warn: only works after "move" cmd
       {
         moveStack.clear();
-        sanMoves.clear();
 
         updatePosition(pos);
       }
