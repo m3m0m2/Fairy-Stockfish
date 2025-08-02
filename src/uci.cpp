@@ -467,7 +467,7 @@ void UCI::loop(int argc, char* argv[]) {
 
         updatePosition(pos);
       }
-      else if (token == "back")  // Retract last move. Warn: only works after "move" cmd
+      else if (token == "back")  // Retract last move
       {
         if (moveStack.size() == 0) continue;
 
@@ -475,7 +475,7 @@ void UCI::loop(int argc, char* argv[]) {
 
         updatePosition(pos);
       }
-      else if (token == "reset") // Go to starting the position. Warn: only works after "move" cmd
+      else if (token == "reset") // Go to starting or fen position
       {
         moveStack.clear();
 

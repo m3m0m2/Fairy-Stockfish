@@ -37,8 +37,12 @@ struct MoveInfo
     PieceType promotion = NO_PIECE_TYPE;
 };
 
-MoveInfo parseMoveInfo(const Position& pos, string& str)
+MoveInfo parseMoveInfo(const Position& pos, const string& origStr)
 {
+    // Strip number and dots before the move if given as 1...Nc6 -> Nc6
+    auto lastDot = origStr.find_last_of('.');
+    auto str = (lastDot == string::npos) ? origStr : origStr.substr(lastDot + 1);
+
     MoveInfo info;
     auto& tokens = info.tokens;
     for (unsigned char c : str)
@@ -139,7 +143,8 @@ MoveInfo parseMoveInfo(const Position& pos, string& str)
 // from-file [from-rank] [x] to [=piece] [+|#]          // pawn
 // piece @ to                                           // drop
 // O-O | O-O-O                                          // castling
-Move parseMoveRelaxed(const Position& pos, string& str) {
+Move parseMoveRelaxed(const Position& pos, string& str, const MoveList<LEGAL>& allMoves)
+{
     if (str.length() < 2) return MOVE_NONE;
 
     Color turn = pos.side_to_move();
@@ -188,7 +193,6 @@ Move parseMoveRelaxed(const Position& pos, string& str) {
     }
     if (pieceType == NO_PIECE_TYPE) return MOVE_NONE;
 
-    const auto allMoves = MoveList<LEGAL>(pos);
     Square from = info.from_sq;
 
     // Find match on all legal moves
@@ -222,8 +226,8 @@ Move parseMoveRelaxed(const Position& pos, string& str) {
   return MOVE_NONE;
 }
 
-Move parseMoveStrict(Position& pos, string sanMove, Stockfish::Notation notation) {
-    for (const ExtMove& move : MoveList<LEGAL>(pos)) {
+Move parseMoveStrict(Position& pos, string sanMove, const MoveList<LEGAL>& allMoves, Stockfish::Notation notation) {
+    for (const ExtMove& move : allMoves) {
         if (sanMove == Stockfish::SAN::move_to_san(pos, move, notation)) {
             return move;
         }
@@ -233,10 +237,12 @@ Move parseMoveStrict(Position& pos, string sanMove, Stockfish::Notation notation
 
 Move parseMove(Position& pos, string& str)
 {
-    Move move = parseMoveStrict(pos, str, Stockfish::NOTATION_SAN);
+    auto allMoves = MoveList<LEGAL>(pos);
+
+    Move move = parseMoveStrict(pos, str, allMoves, Stockfish::NOTATION_SAN);
     if (move != MOVE_NONE) return move;
 
-    return parseMoveRelaxed(pos, str);
+    return parseMoveRelaxed(pos, str, allMoves);
 }
 
 string candidateMoves(Position& pos, Stockfish::Notation notation)
