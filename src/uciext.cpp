@@ -293,20 +293,27 @@ string variationLine(Position& pos, const std::vector<Move>& moves)
     return r;
 }
 
+string move2sanOrNone(Position& pos, Move move)
+{
+    if (move == MOVE_NONE)
+        return "(none)";
+    return Stockfish::SAN::move_to_san(pos, move, NOTATION_SAN);
+}
+
 vector<string> first2Moves(Position& pos, const vector<Move>& moves)
 {
     vector<string> r;
     if (moves.size() == 0) return r;
 
     Move move = moves[0];
-    r.push_back(Stockfish::SAN::move_to_san(pos, move, NOTATION_SAN));
+    r.push_back(move2sanOrNone(pos, move));
 
-    if (moves.size() == 1) return r;
+    if (moves.size() == 1 || move == MOVE_NONE) return r;
 
     StateInfo si;
     pos.do_move(move, si);
 
-    r.push_back(Stockfish::SAN::move_to_san(pos, moves[1], NOTATION_SAN));
+    r.push_back(move2sanOrNone(pos, moves[1]));
 
     pos.undo_move(move);
 

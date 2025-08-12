@@ -316,13 +316,17 @@ void MainThread::search() {
         Depth d = updated ? depth : std::max(1, depth - 1);
         Value v = updated ? rootMoves[i].score : rootMoves[i].previousScore;
 
+        if (v == -VALUE_INFINITE)
+            v = VALUE_ZERO;
+
         std::stringstream ss;
         ss << "info"
             << " depth "    << d
             << " seldepth " << rootMoves[i].selDepth
             << " multipv "  << i + 1
-            << " score "    << UCI::value(v)
-            << " pv " << UCIExt::variationLine(rootPos, rootMoves[i].pv);
+            << " score "    << UCI::value(v);
+        if (rootMoves[i].pv.size() > 0 && rootMoves[i].pv[0] != MOVE_NONE)
+            ss << " pv " << UCIExt::variationLine(rootPos, rootMoves[i].pv);
         sync_cout << ss.str() << sync_endl;
     }
 
