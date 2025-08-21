@@ -63,20 +63,27 @@ namespace {
             pos.do_move(m, extStates->back());
         }
 
+        int movesFailed = sanMoves.size();
+
         for (string moveStr : sanMoves)
         {
             Move move = UCIExt::parseMove(pos, moveStr);
 
             if (move == MOVE_NONE) {
-                sync_cout << "Invalid move: " << moveStr << sync_endl;
+                sync_cout << "move failed " << movesFailed << " " << moveStr << sync_endl;
                 break;
             }
 
             moveStack.push_back(move);
             extStates->emplace_back();
             pos.do_move(move, extStates->back());
+
+            movesFailed--;
         }
         sanMoves.clear();
+
+        if (movesFailed == 0 && Options["UCI_SAN"])
+            sync_cout << "move ok" << sync_endl;
     }
 
   // position() is called when engine receives the "position" UCI command.
