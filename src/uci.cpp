@@ -488,6 +488,14 @@ void UCI::loop(int argc, char* argv[]) {
 
         updatePosition(pos);
       }
+      else if (token == "norm") // Normalize moves
+      {
+        list<string> strMoves;
+        while (is >> token)
+            strMoves.push_back(token);
+
+        sync_cout << "norm: " << UCIExt::normalizeLine(pos, strMoves) << sync_endl;
+      }
       else if (!token.empty() && token[0] != '#')
           sync_cout << "Unknown command: " << cmd << sync_endl;
 

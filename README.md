@@ -18,6 +18,7 @@ Extra commands added:
 |------------------------------------|---------------------------------------------|
 | setoption name UCI\_SAN value true | show lines and best move using SAN notation |
 | move san1 [[san2] ... ]            | play incremental moves                      |
+| norm san1 [[san2] ... ]            | return normalized form of moves             |
 | cm                                 | show candidate moves                        |
 | back                               | retract the last move                       |
 | reset                              | reset to the starting position              |
@@ -63,6 +64,8 @@ Extra commands added:
 > ...
 
  move 1.Kc2 Bc1
+> move ok
+
  back
  reset
 ```

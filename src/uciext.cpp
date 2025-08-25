@@ -262,10 +262,10 @@ string candidateMoves(Position& pos, Stockfish::Notation notation)
     return r;
 }
 
-string variationLine(Position& pos, const std::vector<Move>& moves)
+string variationLine(Position& pos, const vector<Move>& moves)
 {
     string r;
-    StateListPtr states(new std::deque<StateInfo>(1));
+    StateListPtr states(new deque<StateInfo>(1));
     int moveIdx = 0;
 
     for (auto move : moves)
@@ -283,6 +283,48 @@ string variationLine(Position& pos, const std::vector<Move>& moves)
         states->emplace_back();
         pos.do_move(move, states->back());
         moveIdx++;
+    }
+
+    for (auto it = moves.rbegin(); it != moves.rend(); it++)
+    {
+        pos.undo_move(*it);
+    }
+
+    return r;
+}
+
+string normalizeLine(Position& pos, const list<string>& strMoves)
+{
+    string moveStr, r;
+    list<Move> moves;
+    StateListPtr states(new deque<StateInfo>(1));
+    int moveIdx = 0;
+
+    for (string strMove : strMoves)
+    {
+        Move move = parseMove(pos, strMove);
+
+        if (move == MOVE_NONE)
+        {
+            // sync_cout << "norm failed " << moveIdx << " " << strMove << sync_endl;
+            break;
+        }
+
+        if (r.length() > 0) r += " ";
+
+        auto ply = pos.game_ply();
+        if (ply % 2 == 0 || moveIdx == 0)
+        {
+            r += std::to_string(1 + (ply / 2));
+            r += (ply % 2 == 0) ? "." : "...";
+        }
+
+        r += Stockfish::SAN::move_to_san(pos, move, NOTATION_SAN);
+        states->emplace_back();
+        pos.do_move(move, states->back());
+        moveIdx++;
+
+        moves.push_back(move);
     }
 
     for (auto it = moves.rbegin(); it != moves.rend(); it++)
